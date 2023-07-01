@@ -1,16 +1,15 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdResult};
+use cosmwasm_std::{
+    to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdResult,
+};
 use cw2::set_contract_version;
 
-use crate::error::ContractError;
-use crate::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg};
+use crate::{error::ContractError, msg::*, state::*};
 
-// version info for migration info
 const CONTRACT_NAME: &str = "crates.io:yearn-factory";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// Handling contract instantiation
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
     deps: DepsMut,
@@ -20,29 +19,11 @@ pub fn instantiate(
 ) -> Result<Response, ContractError> {
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
-    // With `Response` type, it is possible to dispatch message to invoke external logic.
-    // See: https://github.com/CosmWasm/cosmwasm/blob/main/SEMANTICS.md#dispatching-messages
     Ok(Response::new()
         .add_attribute("method", "instantiate")
         .add_attribute("owner", info.sender))
 }
 
-/// Handling contract migration
-/// To make a contract migratable, you need
-/// - this entry_point implemented
-/// - only contract admin can migrate, so admin has to be set at contract initiation time
-/// Handling contract execution
-#[cfg_attr(not(feature = "library"), entry_point)]
-pub fn migrate(_deps: DepsMut, _env: Env, msg: MigrateMsg) -> Result<Response, ContractError> {
-    match msg {
-        // Find matched incoming message variant and execute them with your custom logic.
-        //
-        // With `Response` type, it is possible to dispatch message to invoke external logic.
-        // See: https://github.com/CosmWasm/cosmwasm/blob/main/SEMANTICS.md#dispatching-messages
-    }
-}
-
-/// Handling contract execution
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn execute(
     _deps: DepsMut,
@@ -51,31 +32,119 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        // Find matched incoming message variant and execute them with your custom logic.
-        //
-        // With `Response` type, it is possible to dispatch message to invoke external logic.
-        // See: https://github.com/CosmWasm/cosmwasm/blob/main/SEMANTICS.md#dispatching-messages
+        ExecuteMsg::RegisterVault(vault_data) => {
+            execute::execute_register(_deps, _env, _info, vault_data)
+        }
     }
 }
 
-/// Handling contract query
+pub mod execute {
+    use super::*;
+
+    pub fn execute_register(
+        _deps: DepsMut,
+        _env: Env,
+        _info: MessageInfo,
+        vault_data: VaultData,
+    ) -> Result<Response, ContractError> {
+        let set_vault_id: String;
+        let copy_vault_data = &vault_data;
+
+        let vault_record = VAULT_RECORD.load(_deps.storage);
+        match &vault_record {
+            Ok(existed_vault) => {
+                set_vault_id = (existed_vault.len() + 1).to_string();
+            }
+            Err(_) => {
+                set_vault_id = String::from("1");
+            }
+        }
+
+        let vault = Vault {
+            name: copy_vault_data.name.to_string(),
+            symbol: copy_vault_data.symbol.to_string(),
+            vault_id: set_vault_id,
+            vault_address: copy_vault_data.vault_address.to_string(),
+            vault_owner: _info.sender.to_string(),
+        };
+
+        match vault_record {
+            Ok(existed_vault) => {
+                for i in 0..existed_vault.len() {
+                    if existed_vault[i].name != vault_data.name
+                        || existed_vault[i].symbol != vault_data.symbol
+                        || existed_vault[i].vault_address != vault_data.vault_address
+                    {
+                        return Err(ContractError::CustomError {
+                            val: "vault already existed".to_string(),
+                        });
+                    }
+                }
+
+                let updated_record =
+                    VAULT_RECORD.update(_deps.storage, |mut update_record| -> StdResult<_> {
+                        update_record.push(vault);
+                        Ok(update_record)
+                    });
+
+                match updated_record {
+                    Ok(_) => {}
+                    Err(_) => {
+                        return Err(ContractError::CustomError {
+                            val: "Vault creation failed!".to_string(),
+                        });
+                    }
+                }
+            }
+            Err(_) => {
+                let mut new_vault: Vec<Vault> = Vec::new();
+                new_vault.push(vault);
+
+                match VAULT_RECORD.save(_deps.storage, &new_vault) {
+                    Ok(_) => {}
+                    Err(_) => {
+                        return Err(ContractError::CustomError {
+                            val: "Vault creation failed!".to_string(),
+                        });
+                    }
+                }
+            }
+        }
+
+        Ok(Response::new().add_attribute("method", "execute_register"))
+    }
+}
+
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(_deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
-        // Find matched incoming message variant and query them your custom logic
-        // and then construct your query response with the type usually defined
-        // `msg.rs` alongside with the query message itself.
-        //
-        // use `cosmwasm_std::to_binary` to serialize query response to json binary.
+        QueryMsg::GetVaults {} => to_binary(&query::get_vault_array(_deps, _env)),
     }
 }
 
-/// Handling submessage reply.
-/// For more info on submessage and reply, see https://github.com/CosmWasm/cosmwasm/blob/main/SEMANTICS.md#submessages
+pub mod query {
+    use super::*;
+
+    pub fn get_vault_array(
+        _deps: Deps,
+        _env: Env,
+    ) -> Result<GetVaultRecordResponse, ContractError> {
+        let vault_record = VAULT_RECORD.load(_deps.storage);
+
+        match vault_record {
+            Ok(vaults) => Ok(GetVaultRecordResponse {
+                vault_array: vaults,
+            }),
+            Err(_) => {
+                return Err(ContractError::CustomError {
+                    val: "No vault present".to_string(),
+                });
+            }
+        }
+    }
+}
+
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn reply(_deps: DepsMut, _env: Env, _msg: Reply) -> Result<Response, ContractError> {
-    // With `Response` type, it is still possible to dispatch message to invoke external logic.
-    // See: https://github.com/CosmWasm/cosmwasm/blob/main/SEMANTICS.md#dispatching-messages
-
     todo!()
 }

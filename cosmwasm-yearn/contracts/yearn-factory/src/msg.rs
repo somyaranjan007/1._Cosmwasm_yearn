@@ -1,30 +1,31 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
 
-/// Message type for `instantiate` entry_point
+use crate::state::Vault;
+
 #[cw_serde]
 pub struct InstantiateMsg {}
 
-/// Message type for `execute` entry_point
 #[cw_serde]
-pub enum ExecuteMsg {}
+pub enum ExecuteMsg {
+    RegisterVault(VaultData),
+}
 
-/// Message type for `migrate` entry_point
 #[cw_serde]
-pub enum MigrateMsg {}
+#[serde(rename_all = "snake_case")]
+pub struct VaultData {
+    pub name: String,
+    pub symbol: String,
+    pub vault_address: String,
+}
 
-/// Message type for `query` entry_point
 #[cw_serde]
 #[derive(QueryResponses)]
 pub enum QueryMsg {
-    // This example query variant indicates that any client can query the contract
-    // using `YourQuery` and it will return `YourQueryResponse`
-    // This `returns` information will be included in contract's schema
-    // which is used for client code generation.
-    //
-    // #[returns(YourQueryResponse)]
-    // YourQuery {},
+    #[returns(GetVaultRecordResponse)]
+    GetVaults {},
 }
 
-// We define a custom struct for each query response
-// #[cw_serde]
-// pub struct YourQueryResponse {}
+#[cw_serde]
+pub struct GetVaultRecordResponse {
+    pub vault_array: Vec<Vault>,
+}
