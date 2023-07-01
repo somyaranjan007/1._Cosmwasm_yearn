@@ -4,7 +4,7 @@ use cosmwasm_std::entry_point;
 use cosmwasm_std::{
     to_binary, Binary, Deps, DepsMut, Env, 
     MessageInfo, Reply, Response, StdResult, WasmMsg, 
-    WasmQuery, SubMsg, Empty,
+    WasmQuery, SubMsg, Empty, from_binary
 };
 
 use cw2::set_contract_version;
@@ -96,7 +96,62 @@ pub fn execute(
     _info: MessageInfo,
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
-    match msg {}
+    match msg {
+        ExecuteMsg::Receive(cw20_receive_msg) => execute::handle_cw20_receive(_deps, _env, _info, cw20_receive_msg),
+    }
+}
+
+pub mod execute {
+    
+
+    use super::*;
+
+    pub fn handle_cw20_receive(_deps: DepsMut, _env: Env, _info: MessageInfo, _msg: Cw20ReceiveMsg) -> Result<Response, ContractError> {
+
+        const DEPOSIT_MESSAGE: &str = "Deposit";
+        const WITHDRAW_MESSAGE: &str = "Withdraw";
+
+        let _send_cw20: SendCw20Msg = from_binary(&_msg.msg)?;
+
+        match _send_cw20.message.as_str() {
+            DEPOSIT_MESSAGE => {
+                let token_address = SUPPORTED_TOKEN.load(_deps.storage);
+                match token_address {
+                    Ok(t_address) => {
+                        if t_address == _send_cw20.address {
+                            // incomplete
+                        } else {
+                            return Err(ContractError::CustomError { val: "Vault doesn't support this token!".to_string() });
+                        }
+                    },
+                    Err(_) => {
+                        return Err(ContractError::CustomError { val: "This vault doesn't assign any token!".to_string() });
+                    }
+                }
+            },
+            WITHDRAW_MESSAGE => {
+                let vtoken_address = VTOKEN.load(_deps.storage);
+
+                match vtoken_address {
+                    Ok(vtoken) => {
+                        if vtoken == _send_cw20.address {
+                            // incomplete.
+                        } else {
+                            return Err(ContractError::CustomError { val: "Vault doesn't support this vtoken!".to_string() });
+                        }
+                    },
+                    Err(_) => {
+                        return Err(ContractError::CustomError { val: "This vault doesn't assign any vtoken!".to_string() });
+                    }
+                }
+            },
+            _message => {
+                return Err(ContractError::CustomError { val: "Invalid Request!".to_string() })
+            }
+        }
+
+        unimplemented!();
+    }
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
